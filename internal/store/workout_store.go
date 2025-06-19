@@ -39,6 +39,7 @@ type WorkoutStore interface {
 	CreateWorkout(*Workout) (*Workout, error)
 	GetWorkoutByID(id int64) (*Workout, error)
 	UpdateWorkout(*Workout) error
+	DeleteWorkout(id int64) error
 }
 
 func (pg *PostgresWorkoutStore) CreateWorkout(w *Workout) (*Workout, error) {
@@ -81,15 +82,14 @@ func (pg *PostgresWorkoutStore) CreateWorkout(w *Workout) (*Workout, error) {
 	return w, nil
 }
 
-func (pg PostgresWorkoutStore) GetWorkoutByID(id int64) (workout *Workout, err error) {
+func (pg PostgresWorkoutStore) GetWorkoutByID(id int64) (*Workout, error) {
 	query := `
 	select id, title, description, duration_minutes, calories_burned
 	FROM workouts
 	WHERE id = $1
 	`
-
-	err = pg.db.QueryRow(query, id).
-		Scan(&workout.ID, &workout.Title, &workout.Description, &workout.DurationMinutes, &workout.CaloriesBurned)
+	var workout Workout
+	err := pg.db.QueryRow(query, id).Scan(&workout.ID, &workout.Title, &workout.Description, &workout.DurationMinutes, &workout.CaloriesBurned)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -124,12 +124,12 @@ func (pg PostgresWorkoutStore) GetWorkoutByID(id int64) (workout *Workout, err e
 			&entry.OrderIndex,
 		)
 		if err != nil {
-			return
+			return nil, err
 		}
 		workout.Entries = append(workout.Entries, entry)
 	}
 
-	return
+	return &workout, nil
 }
 
 func (pg *PostgresWorkoutStore) UpdateWorkout(w *Workout) error {
@@ -140,8 +140,8 @@ func (pg *PostgresWorkoutStore) UpdateWorkout(w *Workout) error {
 	defer tx.Rollback()
 
 	query := `
-	UPDATE WorkoutStore
-	SET title = $1, description $2, duration_minutes = $3, calories_burned = $4
+	UPDATE workouts
+	SET title = $1, description = $2, duration_minutes = $3, calories_burned = $4
 	WHERE id = $5
 	`
 
@@ -180,6 +180,29 @@ func (pg *PostgresWorkoutStore) UpdateWorkout(w *Workout) error {
 	err = tx.Commit()
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+
+func (pg *PostgresWorkoutStore) DeleteWorkout(id int64) error {
+	query := `DELELTE FROM workouts WHERE id = $1`
+
+	result, err := pg.db.Exec(query, id)
+
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
 	}
 
 	return nil
